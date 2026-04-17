@@ -33,15 +33,14 @@ def upsert_control(
     ct = db.scalar(select(ControlType).where(ControlType.code == control_code))
     if ct is None:
         raise ValueError(f"Unknown control code: {control_code}")
-    link = db.scalar(
-        select(AssetSecurityControl).where(
-            AssetSecurityControl.asset_id == asset.id,
-            AssetSecurityControl.control_type_id == ct.id,
-        )
+    db.flush()
+    link = next(
+        (l for l in asset.controls if l.control_type_id == ct.id),
+        None,
     )
     if link is None:
-        link = AssetSecurityControl(asset_id=asset.id, control_type_id=ct.id)
-        db.add(link)
+        link = AssetSecurityControl(control_type_id=ct.id)
+        link.asset = asset
     if system_status is not None:
         link.system_status = system_status
     if override_status is not None:
