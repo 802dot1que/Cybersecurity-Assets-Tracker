@@ -9,10 +9,11 @@ from sqlalchemy.orm import Session
 
 from app.assets.models import Asset, AssetIP, AssetConflict
 from app.audit.service import record as audit
+from app.controls.service import upsert_control
 from app.correlation.service import correlate
 from app.ingestion.models import IngestionBatch, IngestionRecord
 from app.ingestion.normalize import CANONICAL_FIELDS
-from app.ingestion.parser import normalize_row, read_excel
+from app.ingestion.parser import cell_to_control_status, normalize_row, read_excel
 
 # Fields copied from normalized row to asset.system_* on create/merge.
 OVERRIDABLE_NORMALIZED = ("hostname", "mac", "asset_type", "os", "os_version", "os_eos")
@@ -25,11 +26,13 @@ def run_excel_ingestion(
     content: bytes,
     mapping: dict[str, str],
     source: str = "excel",
+    control_mapping: dict[str, str] | None = None,
     uploaded_by: int | None = None,
 ) -> IngestionBatch:
     df = read_excel(content)
+    full_mapping = {"fields": mapping, "controls": control_mapping or {}}
     batch = IngestionBatch(
-        filename=filename, source=source, mapping=mapping,
+        filename=filename, source=source, mapping=full_mapping,
         row_count=len(df), uploaded_by=uploaded_by, status="processing",
     )
     db.add(batch)
@@ -48,6 +51,7 @@ def run_excel_ingestion(
             rec.asset_id = asset.id
             rec.action = action
             rec.match_confidence = confidence
+            _apply_control_columns(db, asset, raw, control_mapping or {}, source=source)
             if action == "created":
                 batch.created_count += 1
             elif action == "merged":
@@ -62,6 +66,25 @@ def run_excel_ingestion(
     db.commit()
     db.refresh(batch)
     return batch
+
+
+def _apply_control_columns(
+    db: Session, asset: Asset, raw: dict, control_mapping: dict[str, str], *, source: str
+) -> None:
+    """Write system_status on AssetSecurityControl for each mapped control column."""
+    now = datetime.now(timezone.utc)
+    for code, col in control_mapping.items():
+        if not col:
+            continue
+        status = cell_to_control_status(raw.get(col))
+        try:
+            upsert_control(
+                db, asset=asset, control_code=code,
+                system_status=status, last_check_in=now, source=source,
+            )
+        except ValueError:
+            # Unknown control code — silently skip rather than fail the row.
+            continue
 
 
 def _jsonable(d: dict) -> dict:

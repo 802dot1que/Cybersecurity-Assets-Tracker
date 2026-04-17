@@ -8,7 +8,7 @@ from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.auth.models import User
 from app.ingestion.models import ColumnMapping, IngestionBatch
-from app.ingestion.parser import read_excel, suggest_mapping
+from app.ingestion.parser import read_excel, suggest_control_columns, suggest_mapping
 from app.ingestion.service import run_excel_ingestion
 
 router = APIRouter(prefix="/api/ingestion", tags=["ingestion"])
@@ -28,6 +28,7 @@ async def preview_upload(
     return {
         "columns": cols,
         "suggested_mapping": suggest_mapping(cols),
+        "suggested_control_columns": suggest_control_columns(cols),
         "sample_rows": df.head(5).fillna("").to_dict(orient="records"),
         "total_rows": len(df),
     }
@@ -37,6 +38,7 @@ async def preview_upload(
 async def upload(
     file: UploadFile = File(...),
     mapping: str = Form(..., description="JSON object: {canonical_field: excel_column}"),
+    control_mapping: str = Form("{}", description="JSON object: {control_code: excel_column}"),
     source: str = Form("excel"),
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
@@ -45,11 +47,13 @@ async def upload(
     _check_size(content)
     try:
         mapping_dict = json.loads(mapping)
+        control_dict = json.loads(control_mapping)
     except json.JSONDecodeError as e:
         raise HTTPException(400, f"Invalid mapping JSON: {e}") from e
     batch = run_excel_ingestion(
         db, filename=file.filename or "upload.xlsx",
         content=content, mapping=mapping_dict,
+        control_mapping=control_dict,
         source=source, uploaded_by=current.id,
     )
     return {

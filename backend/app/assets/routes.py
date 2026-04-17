@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.assets.models import Asset, AssetIP
+from app.assets.constants import control_applies
+from app.assets.models import Asset, AssetIP, AssetSecurityControl, ControlType
 from app.assets.schemas import (
     AssetListItem, AssetOut, ControlUpdatePayload, ManualCriticalityPayload, OverridePayload,
 )
@@ -21,8 +22,10 @@ router = APIRouter(prefix="/api/assets", tags=["assets"])
 def list_assets(
     q: str | None = Query(None, description="Search hostname/IP/MAC"),
     asset_type: str | None = None,
-    missing_control: str | None = Query(None, description="control code"),
-    limit: int = 100,
+    missing_control: str | None = Query(None, description="Control code (e.g. EDR) — return assets where this control is applicable but not Installed"),
+    eos_only: bool = False,
+    unknown_only: bool = False,
+    limit: int = 200,
     offset: int = 0,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
@@ -41,7 +44,30 @@ def list_assets(
             Asset.system_asset_type == asset_type,
             Asset.override_asset_type == asset_type,
         ))
+    if eos_only:
+        from datetime import date
+        stmt = stmt.where(func.coalesce(Asset.override_os_eos, Asset.system_os_eos) <= date.today())
+    if unknown_only:
+        stmt = stmt.where(or_(
+            func.coalesce(Asset.override_asset_type, Asset.system_asset_type) == "Unknown",
+            and_(Asset.system_asset_type.is_(None), Asset.override_asset_type.is_(None)),
+        ))
     assets = db.scalars(stmt.limit(limit).offset(offset)).all()
+
+    if missing_control:
+        ct = db.scalar(select(ControlType).where(ControlType.code == missing_control))
+        whitelist = (ct.applies_to_asset_types or []) if ct else []
+
+        def is_missing(a: Asset) -> bool:
+            atype = a.effective("asset_type") or "Unknown"
+            applicable = (atype in whitelist) if whitelist else control_applies(missing_control, atype)
+            if not applicable:
+                return False
+            link = next((l for l in a.controls if l.control_type_id == (ct.id if ct else -1)), None)
+            return (link.effective_status if link else "Unknown") != "Installed"
+
+        assets = [a for a in assets if is_missing(a)]
+
     return [to_list_item(a) for a in assets]
 
 
