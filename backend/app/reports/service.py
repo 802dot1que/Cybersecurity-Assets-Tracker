@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.assets.constants import control_applies
-from app.assets.models import Asset, AssetSecurityControl, ControlType
+from app.assets.models import Asset, AssetConflict, AssetSecurityControl, ControlType
 
 
 def dashboard_summary(db: Session) -> dict[str, Any]:
@@ -74,10 +74,15 @@ def dashboard_summary(db: Session) -> dict[str, Any]:
         lvl = a.criticality.level if a.criticality else None
         crit_dist[lvl or "Unscored"] = crit_dist.get(lvl or "Unscored", 0) + 1
 
+    conflicts_count = db.scalar(
+        select(func.count()).select_from(AssetConflict).where(AssetConflict.resolved == False)  # noqa: E712
+    ) or 0
+
     return {
         "total_assets": total,
         "eos_assets": eos_count,
         "unknown_assets": unknown,
+        "conflicts_count": conflicts_count,
         "coverage": coverage,
         "criticality_distribution": crit_dist,
     }

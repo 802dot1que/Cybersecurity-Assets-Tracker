@@ -39,6 +39,16 @@ class CriticalityOut(BaseModel):
     details: dict = Field(default_factory=dict)
 
 
+class ConflictOut(BaseModel):
+    id: int
+    field: str
+    value_a: str | None = None
+    value_b: str | None = None
+    source_a: str | None = None
+    source_b: str | None = None
+    created_at: datetime
+
+
 class AssetOut(BaseModel):
     id: int
     uuid: str
@@ -55,6 +65,7 @@ class AssetOut(BaseModel):
     controls: list[ControlOut] = []
     criticality: CriticalityOut | None = None
     conflict_count: int = 0
+    conflicts: list[ConflictOut] = []
 
 
 class AssetListItem(BaseModel):
@@ -70,6 +81,7 @@ class AssetListItem(BaseModel):
     last_seen: datetime | None = None
     criticality_level: str | None = None
     confidence_score: float = 0.0
+    conflict_count: int = 0
 
 
 class OverridePayload(BaseModel):

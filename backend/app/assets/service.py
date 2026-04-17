@@ -1,12 +1,12 @@
 """Asset read helpers — build rich `AssetOut` with effective values, controls, criticality."""
 from __future__ import annotations
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.assets.constants import control_applies
-from app.assets.models import Asset, AssetConflict, AssetSecurityControl, ControlType
+from app.assets.models import Asset, AssetSecurityControl, ControlType
 from app.assets.schemas import (
-    AssetIPOut, AssetListItem, AssetOut, ControlOut, CriticalityOut, FieldValue,
+    AssetIPOut, AssetListItem, AssetOut, ConflictOut, ControlOut, CriticalityOut, FieldValue,
 )
 
 
@@ -45,11 +45,17 @@ def to_asset_out(db: Session, asset: Asset) -> AssetOut:
             source=link.source if link else None,
         ))
 
-    conflict_count = db.scalar(
-        select(func.count()).select_from(AssetConflict).where(
-            AssetConflict.asset_id == asset.id, AssetConflict.resolved == False  # noqa: E712
+    open_conflicts = [c for c in asset.conflicts if not c.resolved]
+    conflict_count = len(open_conflicts)
+    conflicts_out = [
+        ConflictOut(
+            id=c.id, field=c.field,
+            value_a=c.value_a, value_b=c.value_b,
+            source_a=c.source_a, source_b=c.source_b,
+            created_at=c.created_at,
         )
-    ) or 0
+        for c in open_conflicts
+    ]
 
     return AssetOut(
         id=asset.id,
@@ -73,10 +79,12 @@ def to_asset_out(db: Session, asset: Asset) -> AssetOut:
             ) if asset.criticality else None
         ),
         conflict_count=conflict_count,
+        conflicts=conflicts_out,
     )
 
 
-def to_list_item(asset: Asset) -> AssetListItem:
+def to_list_item(db: Session, asset: Asset) -> AssetListItem:
+    conflict_count = sum(1 for c in asset.conflicts if not c.resolved)
     return AssetListItem(
         id=asset.id, uuid=asset.uuid,
         hostname=asset.effective("hostname"),
@@ -89,4 +97,5 @@ def to_list_item(asset: Asset) -> AssetListItem:
         last_seen=asset.last_seen,
         criticality_level=asset.criticality.level if asset.criticality else None,
         confidence_score=asset.confidence_score or 0.0,
+        conflict_count=conflict_count,
     )

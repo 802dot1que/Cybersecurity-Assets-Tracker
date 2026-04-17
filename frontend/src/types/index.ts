@@ -18,6 +18,16 @@ export type ControlOut = {
   source: string | null;
 };
 
+export type ConflictOut = {
+  id: number;
+  field: string;
+  value_a: string | null;
+  value_b: string | null;
+  source_a: string | null;
+  source_b: string | null;
+  created_at: string;
+};
+
 export type AssetOut = {
   id: number;
   uuid: string;
@@ -34,6 +44,7 @@ export type AssetOut = {
   controls: ControlOut[];
   criticality: { level: string | null; score: number | null; source: string | null; details: Record<string, any> } | null;
   conflict_count: number;
+  conflicts: ConflictOut[];
 };
 
 export type AssetListItem = {
@@ -42,4 +53,5 @@ export type AssetListItem = {
   asset_type: string | null; os: string | null; os_version: string | null; os_eos: string | null;
   ips: string[]; last_seen: string | null;
   criticality_level: string | null; confidence_score: number;
+  conflict_count: number;
 };

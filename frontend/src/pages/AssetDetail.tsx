@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { api } from "../api/client";
-import type { AssetOut, FieldValue } from "../types";
+import type { AssetOut, ConflictOut, FieldValue } from "../types";
 import { useState } from "react";
 
 function OverrideField({
@@ -45,6 +45,78 @@ function OverrideField({
           <button className="btn" onClick={() => setEditing(false)}>Cancel</button>
         </div>
       )}
+    </div>
+  );
+}
+
+function ConflictsPanel({ asset, onSaved }: { asset: AssetOut; onSaved: () => void }) {
+  const [customValues, setCustomValues] = useState<Record<number, string>>({});
+
+  const resolve = useMutation({
+    mutationFn: async ({ conflictId, choice, overrideValue }: { conflictId: number; choice: string; overrideValue?: string }) =>
+      (await api.post(`/assets/${asset.id}/conflicts/${conflictId}/resolve`, {
+        choice,
+        override_value: overrideValue ?? null,
+      })).data,
+    onSuccess: onSaved,
+  });
+
+  if (!asset.conflicts.length) return null;
+
+  return (
+    <div className="card p-4 border-l-4 border-amber-400">
+      <h3 className="font-semibold mb-3 text-amber-800">
+        Conflicts ({asset.conflicts.length} unresolved)
+      </h3>
+      <div className="space-y-4">
+        {asset.conflicts.map((c: ConflictOut) => (
+          <div key={c.id} className="bg-amber-50 rounded p-3 text-sm">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="font-medium capitalize">{c.field}</span>
+              <span className="text-slate-400 text-xs">{new Date(c.created_at).toLocaleString()}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="bg-white border rounded p-2">
+                <div className="text-xs text-slate-500 mb-1">Source A: {c.source_a || "—"}</div>
+                <div className="font-mono font-medium">{c.value_a ?? "—"}</div>
+              </div>
+              <div className="bg-white border rounded p-2">
+                <div className="text-xs text-slate-500 mb-1">Source B: {c.source_b || "—"}</div>
+                <div className="font-mono font-medium">{c.value_b ?? "—"}</div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                className="btn btn-primary text-xs"
+                disabled={resolve.isPending}
+                onClick={() => resolve.mutate({ conflictId: c.id, choice: "a" })}
+              >
+                Use A
+              </button>
+              <button
+                className="btn btn-primary text-xs"
+                disabled={resolve.isPending}
+                onClick={() => resolve.mutate({ conflictId: c.id, choice: "b" })}
+              >
+                Use B
+              </button>
+              <input
+                className="input text-xs w-40"
+                placeholder="Custom value…"
+                value={customValues[c.id] ?? ""}
+                onChange={(e) => setCustomValues((prev) => ({ ...prev, [c.id]: e.target.value }))}
+              />
+              <button
+                className="btn text-xs"
+                disabled={resolve.isPending || !customValues[c.id]}
+                onClick={() => resolve.mutate({ conflictId: c.id, choice: "override", overrideValue: customValues[c.id] })}
+              >
+                Use custom
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -152,6 +224,7 @@ export default function AssetDetail() {
         </div>
       </div>
 
+      <ConflictsPanel asset={data} onSaved={refresh} />
       <ControlsPanel asset={data} onSaved={refresh} />
     </div>
   );

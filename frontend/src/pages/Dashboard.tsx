@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Bar, BarChart, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
@@ -14,6 +14,7 @@ type DashboardData = {
   total_assets: number;
   eos_assets: number;
   unknown_assets: number;
+  conflicts_count: number;
   coverage: Coverage[];
   criticality_distribution: Record<string, number>;
 };
@@ -37,6 +38,7 @@ function StatCard({
 }
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const { data, isLoading } = useQuery<DashboardData>({
     queryKey: ["dashboard"],
     queryFn: async () => (await api.get("/reports/dashboard")).data,
@@ -54,6 +56,16 @@ export default function Dashboard() {
     Missing: c.missing,
   }));
 
+  function handleBarClick(entry: any, dataKey: "Installed" | "Missing") {
+    if (!entry?.activePayload) return;
+    const code = entry.activeLabel as string;
+    if (dataKey === "Missing") {
+      navigate(`/assets?missing_control=${code}`);
+    } else {
+      navigate(`/assets?installed_control=${code}`);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-baseline justify-between">
@@ -61,27 +73,59 @@ export default function Dashboard() {
         <a href="/api/reports/export/assets.xlsx" className="btn">Export to Excel</a>
       </div>
 
-      {/* KPI tiles — clickable drill-downs */}
+      {/* KPI tiles */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <StatCard label="Total Assets" value={data.total_assets} tone="bg-indigo-600" to="/assets" />
         <StatCard label="EOS Operating Systems" value={data.eos_assets} tone="bg-red-600" to="/assets?eos_only=1" />
         <StatCard label="Unknown / Unmanaged" value={data.unknown_assets} tone="bg-amber-500" to="/assets?unknown_only=1" />
-        <StatCard label="Controls Tracked" value={data.coverage.length} tone="bg-emerald-600" />
+        <StatCard
+          label="Unresolved Conflicts"
+          value={data.conflicts_count}
+          tone={data.conflicts_count > 0 ? "bg-orange-500" : "bg-slate-300"}
+          to={data.conflicts_count > 0 ? "/assets?has_conflicts=1" : undefined}
+        />
       </div>
 
-      {/* Coverage chart + table */}
+      {/* Coverage chart + criticality donut */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="card p-5 lg:col-span-2">
-          <h2 className="font-semibold mb-3">Control Coverage (applicable assets only)</h2>
+          <h2 className="font-semibold mb-1">Control Coverage (applicable assets only)</h2>
+          <p className="text-xs text-slate-500 mb-3">Click a bar to investigate those assets</p>
           <div style={{ width: "100%", height: 280 }}>
             <ResponsiveContainer>
-              <BarChart data={coverageChart}>
+              <BarChart
+                data={coverageChart}
+                onClick={(e) => {
+                  if (!e?.activeLabel) return;
+                  const code = e.activeLabel as string;
+                  navigate(`/assets?missing_control=${code}`);
+                }}
+                style={{ cursor: "pointer" }}
+              >
                 <XAxis dataKey="code" />
                 <YAxis allowDecimals={false} />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="Installed" stackId="a" fill="#10b981" />
-                <Bar dataKey="Missing"   stackId="a" fill="#ef4444" />
+                <Bar
+                  dataKey="Installed"
+                  stackId="a"
+                  fill="#10b981"
+                  onClick={(_data, _index, e) => {
+                    e.stopPropagation();
+                    const code = (_data as any).code as string;
+                    navigate(`/assets?installed_control=${code}`);
+                  }}
+                />
+                <Bar
+                  dataKey="Missing"
+                  stackId="a"
+                  fill="#ef4444"
+                  onClick={(_data, _index, e) => {
+                    e.stopPropagation();
+                    const code = (_data as any).code as string;
+                    navigate(`/assets?missing_control=${code}`);
+                  }}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -109,9 +153,9 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Detailed coverage table — each row is a drill-down link */}
+      {/* Detailed coverage table */}
       <div className="card p-5">
-        <h2 className="font-semibold mb-3">Missing Controls — click to investigate</h2>
+        <h2 className="font-semibold mb-3">Control Coverage — click to investigate</h2>
         <table className="w-full text-sm">
           <thead className="text-left text-slate-500 border-b">
             <tr>
@@ -147,14 +191,24 @@ export default function Dashboard() {
                   ) : <span className="text-slate-400">—</span>}
                 </td>
                 <td className="text-right">
-                  {c.missing > 0 && (
-                    <Link
-                      to={`/assets?missing_control=${c.code}`}
-                      className="btn text-xs"
-                    >
-                      View {c.missing} missing →
-                    </Link>
-                  )}
+                  <div className="flex justify-end gap-2">
+                    {c.installed > 0 && (
+                      <Link
+                        to={`/assets?installed_control=${c.code}`}
+                        className="btn text-xs bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                      >
+                        View {c.installed} installed →
+                      </Link>
+                    )}
+                    {c.missing > 0 && (
+                      <Link
+                        to={`/assets?missing_control=${c.code}`}
+                        className="btn text-xs"
+                      >
+                        View {c.missing} missing →
+                      </Link>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

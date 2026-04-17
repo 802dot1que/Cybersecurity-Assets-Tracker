@@ -14,17 +14,21 @@ export default function Assets() {
   const [q, setQ] = useState(params.get("q") || "");
   const type = params.get("asset_type") || "";
   const missingControl = params.get("missing_control") || "";
+  const installedControl = params.get("installed_control") || "";
+  const hasConflicts = params.get("has_conflicts") === "1";
   const eosOnly = params.get("eos_only") === "1";
   const unknownOnly = params.get("unknown_only") === "1";
 
   const { data, isLoading } = useQuery({
-    queryKey: ["assets", q, type, missingControl, eosOnly, unknownOnly],
+    queryKey: ["assets", q, type, missingControl, installedControl, hasConflicts, eosOnly, unknownOnly],
     queryFn: async () =>
       (await api.get<AssetListItem[]>("/assets", {
         params: {
           q: q || undefined,
           asset_type: type || undefined,
           missing_control: missingControl || undefined,
+          installed_control: installedControl || undefined,
+          has_conflicts: hasConflicts || undefined,
           eos_only: eosOnly || undefined,
           unknown_only: unknownOnly || undefined,
         },
@@ -42,6 +46,8 @@ export default function Assets() {
   const activeFilters: { label: string; onClear: () => void }[] = [];
   if (type) activeFilters.push({ label: `type: ${type}`, onClear: () => setParam("asset_type", null) });
   if (missingControl) activeFilters.push({ label: `missing ${missingControl}`, onClear: () => setParam("missing_control", null) });
+  if (installedControl) activeFilters.push({ label: `installed ${installedControl}`, onClear: () => setParam("installed_control", null) });
+  if (hasConflicts) activeFilters.push({ label: "has conflicts", onClear: () => setParam("has_conflicts", null) });
   if (eosOnly) activeFilters.push({ label: "EOS OS only", onClear: () => setParam("eos_only", null) });
   if (unknownOnly) activeFilters.push({ label: "Unknown type only", onClear: () => setParam("unknown_only", null) });
 
@@ -88,12 +94,13 @@ export default function Assets() {
               <th>IPs</th>
               <th>OS</th>
               <th>Criticality</th>
+              <th>Conflicts</th>
               <th>Conf.</th>
               <th>Last seen</th>
             </tr>
           </thead>
           <tbody>
-            {isLoading && <tr><td colSpan={8} className="p-6 text-center text-slate-500">Loading…</td></tr>}
+            {isLoading && <tr><td colSpan={9} className="p-6 text-center text-slate-500">Loading…</td></tr>}
             {!isLoading && data?.map((a) => (
               <tr key={a.id} className="border-t hover:bg-slate-50">
                 <td className="p-2">
@@ -115,12 +122,21 @@ export default function Assets() {
                     }`}>{a.criticality_level}</span>
                   )}
                 </td>
+                <td>
+                  {a.conflict_count > 0 && (
+                    <Link to={`/assets/${a.id}`}>
+                      <span className="badge bg-amber-100 text-amber-800 cursor-pointer hover:bg-amber-200">
+                        {a.conflict_count} conflict{a.conflict_count !== 1 ? "s" : ""}
+                      </span>
+                    </Link>
+                  )}
+                </td>
                 <td className="tabular-nums">{Math.round(a.confidence_score * 100)}%</td>
                 <td className="text-xs">{a.last_seen ? new Date(a.last_seen).toLocaleString() : "—"}</td>
               </tr>
             ))}
             {!isLoading && !data?.length && (
-              <tr><td colSpan={8} className="p-8 text-center text-slate-500">No assets match these filters.</td></tr>
+              <tr><td colSpan={9} className="p-8 text-center text-slate-500">No assets match these filters.</td></tr>
             )}
           </tbody>
         </table>
