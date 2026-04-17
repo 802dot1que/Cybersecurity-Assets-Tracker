@@ -32,7 +32,8 @@ function Layout({ children }: { children: React.ReactNode }) {
 }
 
 function Protected({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  if (loading) return <div className="p-6 text-slate-500">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
   return <Layout>{children}</Layout>;
 }
