@@ -5,10 +5,13 @@ import type { AssetOut, ConflictOut, FieldValue } from "../types";
 import { useState } from "react";
 
 function OverrideField({
-  label, field, value, assetId, type = "text", onSaved,
-}: { label: string; field: string; value: FieldValue; assetId: number; type?: string; onSaved: () => void }) {
+  label, field, value, assetId, type = "text", options, onSaved,
+}: {
+  label: string; field: string; value: FieldValue; assetId: number;
+  type?: string; options?: string[]; onSaved: () => void;
+}) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<string>(value.override ?? "");
+  const [draft, setDraft] = useState<string>("");
 
   const save = useMutation({
     mutationFn: async () =>
@@ -19,6 +22,12 @@ function OverrideField({
     mutationFn: async () => (await api.delete(`/assets/${assetId}/override/${field}`)).data,
     onSuccess: () => { onSaved(); setEditing(false); },
   });
+
+  function startEdit() {
+    // For select fields: pre-fill with current effective value so dropdown starts on the right option.
+    setDraft(String(options ? (value.effective ?? "") : (value.override ?? "")));
+    setEditing(true);
+  }
 
   return (
     <div className="py-2 border-b last:border-0">
@@ -35,13 +44,26 @@ function OverrideField({
             </div>
           )}
         </div>
-        {!editing && <button className="btn" onClick={() => { setDraft(String(value.override ?? "")); setEditing(true); }}>Edit</button>}
+        {!editing && <button className="btn" onClick={startEdit}>Edit</button>}
       </div>
       {editing && (
         <div className="flex items-center gap-2 mt-2 ml-32">
-          <input className="input max-w-sm" type={type} value={draft} onChange={e => setDraft(e.target.value)} />
-          <button className="btn btn-primary" disabled={save.isPending} onClick={() => save.mutate()}>Save override</button>
-          {value.overridden && <button className="btn" onClick={() => clear.mutate()}>Clear override</button>}
+          {options ? (
+            <select className="input w-48" value={draft} onChange={(e) => setDraft(e.target.value)}>
+              <option value="">— clear override —</option>
+              {options.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          ) : (
+            <input className="input max-w-sm" type={type} value={draft} onChange={(e) => setDraft(e.target.value)} />
+          )}
+          <button className="btn btn-primary" disabled={save.isPending} onClick={() => save.mutate()}>
+            Save override
+          </button>
+          {value.overridden && (
+            <button className="btn" disabled={clear.isPending} onClick={() => clear.mutate()}>
+              Clear override
+            </button>
+          )}
           <button className="btn" onClick={() => setEditing(false)}>Cancel</button>
         </div>
       )}
@@ -189,6 +211,11 @@ export default function AssetDetail() {
           <OverrideField label="Hostname" field="hostname" value={data.hostname} assetId={data.id} onSaved={refresh} />
           <OverrideField label="MAC" field="mac" value={data.mac} assetId={data.id} onSaved={refresh} />
           <OverrideField label="Asset Type" field="asset_type" value={data.asset_type} assetId={data.id} onSaved={refresh} />
+          <OverrideField label="Status" field="asset_status" value={data.asset_status} assetId={data.id}
+            options={["Operational", "Decommissioned", "In Store"]} onSaved={refresh} />
+          <OverrideField label="Environment" field="environment" value={data.environment} assetId={data.id}
+            options={["Production", "Staging", "UAT", "DEV", "User"]} onSaved={refresh} />
+          <OverrideField label="Location" field="location" value={data.location} assetId={data.id} onSaved={refresh} />
           <OverrideField label="OS" field="os" value={data.os} assetId={data.id} onSaved={refresh} />
           <OverrideField label="OS Version" field="os_version" value={data.os_version} assetId={data.id} onSaved={refresh} />
           <OverrideField label="OS EOS" field="os_eos" value={data.os_eos} assetId={data.id} type="date" onSaved={refresh} />
