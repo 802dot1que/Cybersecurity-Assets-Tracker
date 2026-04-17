@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 from app.assets.constants import control_applies
 from app.assets.models import Asset, AssetConflict, AssetIP, AssetSecurityControl, ControlType
 from app.assets.schemas import (
-    AssetListItem, AssetOut, ConflictOut, ControlUpdatePayload, ManualCriticalityPayload,
-    OverridePayload,
+    AssetListItem, AssetOut, ConflictOut, ControlUpdatePayload, CreateAssetPayload,
+    ManualCriticalityPayload, OverridePayload,
 )
 from app.assets.service import to_asset_out, to_list_item
 from app.auth.models import User
@@ -93,6 +93,44 @@ def list_assets(
         assets = [a for a in assets if is_installed(a)]
 
     return [to_list_item(db, a) for a in assets]
+
+
+@router.post("", response_model=AssetOut, status_code=201)
+def create_asset(
+    payload: CreateAssetPayload,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    import uuid as uuidlib
+    from datetime import datetime, timezone
+    from app.assets.models import AssetIP
+    from app.audit.service import record as audit
+
+    now = datetime.now(timezone.utc)
+    asset = Asset(
+        uuid=str(uuidlib.uuid4()),
+        system_hostname=payload.hostname or None,
+        system_mac=payload.mac or None,
+        system_asset_type=payload.asset_type or None,
+        system_os=payload.os or None,
+        system_os_version=payload.os_version or None,
+        first_seen=now,
+        last_seen=now,
+        confidence_score=1.0,
+        override_meta={},
+    )
+    db.add(asset)
+    db.flush()
+    for ip in payload.ips:
+        ip = ip.strip()
+        if ip:
+            asset.ips.append(AssetIP(ip=ip, source="manual", first_seen=now, last_seen=now))
+    recompute_crit(db, asset)
+    audit(db, entity_type="asset", entity_id=asset.id, action="create_manual",
+          user_id=current.id, extra={"source": "manual"})
+    db.commit()
+    db.refresh(asset)
+    return to_asset_out(db, asset)
 
 
 @router.get("/{asset_id}", response_model=AssetOut)

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Bar, BarChart, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -24,6 +25,8 @@ const CRIT_COLORS: Record<string, string> = {
   Low: "#16a34a", Unscored: "#94a3b8",
 };
 
+type CoverageFilter = "all" | "integrated" | "missing";
+
 function StatCard({
   label, value, tone, to,
 }: { label: string; value: number | string; tone: string; to?: string }) {
@@ -39,6 +42,8 @@ function StatCard({
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const [coverageFilter, setCoverageFilter] = useState<CoverageFilter>("all");
+
   const { data, isLoading } = useQuery<DashboardData>({
     queryKey: ["dashboard"],
     queryFn: async () => (await api.get("/reports/dashboard")).data,
@@ -50,21 +55,17 @@ export default function Dashboard() {
     .map(([name, value]) => ({ name, value }))
     .filter((x) => x.value > 0);
 
-  const coverageChart = data.coverage.map((c) => ({
+  const filteredCoverage = data.coverage.filter((c) => {
+    if (coverageFilter === "integrated") return c.installed > 0;
+    if (coverageFilter === "missing") return c.missing > 0;
+    return true;
+  });
+
+  const coverageChart = filteredCoverage.map((c) => ({
     code: c.code,
-    Installed: c.installed,
+    Integrated: c.installed,
     Missing: c.missing,
   }));
-
-  function handleBarClick(entry: any, dataKey: "Installed" | "Missing") {
-    if (!entry?.activePayload) return;
-    const code = entry.activeLabel as string;
-    if (dataKey === "Missing") {
-      navigate(`/assets?missing_control=${code}`);
-    } else {
-      navigate(`/assets?installed_control=${code}`);
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -89,41 +90,50 @@ export default function Dashboard() {
       {/* Coverage chart + criticality donut */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="card p-5 lg:col-span-2">
-          <h2 className="font-semibold mb-1">Control Coverage (applicable assets only)</h2>
-          <p className="text-xs text-slate-500 mb-3">Click a bar to investigate those assets</p>
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="font-semibold">Control Coverage (applicable assets only)</h2>
+            <div className="flex gap-1">
+              {(["all", "integrated", "missing"] as CoverageFilter[]).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setCoverageFilter(f)}
+                  className={`px-3 py-1 text-xs rounded font-medium border transition-colors ${
+                    coverageFilter === f
+                      ? f === "integrated"
+                        ? "bg-emerald-600 text-white border-emerald-600"
+                        : f === "missing"
+                        ? "bg-red-500 text-white border-red-500"
+                        : "bg-indigo-600 text-white border-indigo-600"
+                      : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                  }`}
+                >
+                  {f === "all" ? "All" : f === "integrated" ? "Integrated" : "Missing"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="text-xs text-slate-500 mb-3">Click a bar to see those assets</p>
           <div style={{ width: "100%", height: 280 }}>
             <ResponsiveContainer>
-              <BarChart
-                data={coverageChart}
-                onClick={(e) => {
-                  if (!e?.activeLabel) return;
-                  const code = e.activeLabel as string;
-                  navigate(`/assets?missing_control=${code}`);
-                }}
-                style={{ cursor: "pointer" }}
-              >
+              <BarChart data={coverageChart} style={{ cursor: "pointer" }}>
                 <XAxis dataKey="code" />
                 <YAxis allowDecimals={false} />
                 <Tooltip />
                 <Legend />
                 <Bar
-                  dataKey="Installed"
+                  dataKey="Integrated"
                   stackId="a"
                   fill="#10b981"
-                  onClick={(_data, _index, e) => {
-                    e.stopPropagation();
-                    const code = (_data as any).code as string;
-                    navigate(`/assets?installed_control=${code}`);
+                  onClick={(barData) => {
+                    navigate(`/assets?installed_control=${(barData as any).code}`);
                   }}
                 />
                 <Bar
                   dataKey="Missing"
                   stackId="a"
                   fill="#ef4444"
-                  onClick={(_data, _index, e) => {
-                    e.stopPropagation();
-                    const code = (_data as any).code as string;
-                    navigate(`/assets?missing_control=${code}`);
+                  onClick={(barData) => {
+                    navigate(`/assets?missing_control=${(barData as any).code}`);
                   }}
                 />
               </BarChart>
@@ -155,20 +165,41 @@ export default function Dashboard() {
 
       {/* Detailed coverage table */}
       <div className="card p-5">
-        <h2 className="font-semibold mb-3">Control Coverage — click to investigate</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold">Control Coverage — click to investigate</h2>
+          <div className="flex gap-1">
+            {(["all", "integrated", "missing"] as CoverageFilter[]).map((f) => (
+              <button
+                key={f}
+                onClick={() => setCoverageFilter(f)}
+                className={`px-3 py-1 text-xs rounded font-medium border transition-colors ${
+                  coverageFilter === f
+                    ? f === "integrated"
+                      ? "bg-emerald-600 text-white border-emerald-600"
+                      : f === "missing"
+                      ? "bg-red-500 text-white border-red-500"
+                      : "bg-indigo-600 text-white border-indigo-600"
+                    : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                }`}
+              >
+                {f === "all" ? "All" : f === "integrated" ? "Integrated" : "Missing"}
+              </button>
+            ))}
+          </div>
+        </div>
         <table className="w-full text-sm">
           <thead className="text-left text-slate-500 border-b">
             <tr>
               <th className="py-2 pr-4">Control</th>
               <th>Applicable</th>
-              <th>Installed</th>
+              <th>Integrated</th>
               <th>Missing</th>
               <th>Coverage</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {data.coverage.map((c) => (
+            {filteredCoverage.map((c) => (
               <tr key={c.code} className="border-b last:border-0 hover:bg-slate-50">
                 <td className="py-2 pr-4">
                   <span className="font-medium">{c.code}</span>
@@ -197,7 +228,7 @@ export default function Dashboard() {
                         to={`/assets?installed_control=${c.code}`}
                         className="btn text-xs bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
                       >
-                        View {c.installed} installed →
+                        View {c.installed} integrated →
                       </Link>
                     )}
                     {c.missing > 0 && (

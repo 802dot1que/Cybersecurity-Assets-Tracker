@@ -97,3 +97,12 @@ class ControlUpdatePayload(BaseModel):
 class ManualCriticalityPayload(BaseModel):
     level: str
     score: int = Field(ge=0, le=100)
+
+
+class CreateAssetPayload(BaseModel):
+    hostname: str | None = None
+    mac: str | None = None
+    asset_type: str | None = None
+    os: str | None = None
+    os_version: str | None = None
+    ips: list[str] = Field(default_factory=list)

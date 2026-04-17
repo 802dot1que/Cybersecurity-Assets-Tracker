@@ -4,6 +4,7 @@ Returns (asset, confidence_0_1) for best match, or None.
 Raises AmbiguousMatch when two candidates tie at high confidence (UI surfaces conflict).
 """
 from __future__ import annotations
+import re
 from typing import Any
 
 from rapidfuzz import fuzz
@@ -19,6 +20,19 @@ settings = get_settings()
 class AmbiguousMatch(Exception):
     def __init__(self, candidates):
         self.candidates = candidates
+
+
+def _short_hostname(host: str) -> str:
+    """Strip FQDN suffix and lowercase — 'srv01.corp.com' → 'srv01'."""
+    return host.split(".")[0].lower()
+
+
+def _differs_only_in_trailing_digits(a: str, b: str) -> bool:
+    """True when both names share an identical prefix but differ only in trailing digits.
+    e.g. 'plos1' vs 'plos2' → True; these are distinct numbered instances, not the same host."""
+    m_a = re.match(r'^(.*?)(\d+)$', a)
+    m_b = re.match(r'^(.*?)(\d+)$', b)
+    return bool(m_a and m_b and m_a.group(1) == m_b.group(1) and m_a.group(2) != m_b.group(2))
 
 
 def correlate(db: Session, normalized: dict[str, Any]) -> tuple[Asset, float] | None:
@@ -42,15 +56,20 @@ def correlate(db: Session, normalized: dict[str, Any]) -> tuple[Asset, float] | 
         if a is not None:
             return a, 0.95
 
-    # 3) Hostname fuzzy.
+    # 3) Hostname fuzzy — compare short names only (strip domain suffix).
+    #    Also skip pairs that differ only in trailing digits: dg-hq-srv1 ≠ dg-hq-srv2.
     if host:
+        short_host = _short_hostname(host)
         candidates = db.scalars(select(Asset).where(Asset.system_hostname.is_not(None))).all()
         scored: list[tuple[Asset, float]] = []
         for c in candidates:
             existing = c.effective("hostname")
             if not existing:
                 continue
-            ratio = fuzz.ratio(existing, host)
+            short_existing = _short_hostname(existing)
+            if _differs_only_in_trailing_digits(short_existing, short_host):
+                continue  # numbered siblings are distinct assets
+            ratio = fuzz.ratio(short_existing, short_host)
             if ratio >= settings.HOSTNAME_FUZZY_THRESHOLD:
                 scored.append((c, ratio / 100.0 * 0.85))  # cap fuzzy confidence
         if scored:

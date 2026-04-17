@@ -17,6 +17,7 @@ ASSET_TYPES: list[str] = [
     "Hypervisor",
     "URL",
     "LoadBalancer",
+    "Database",
     "Unknown",
 ]
 
@@ -24,6 +25,7 @@ ASSET_TYPES: list[str] = [
 NETWORK_GEAR = {"Router", "Switch", "IPPhone", "IPCamera", "Printer"}
 ENDPOINT_LIKE = {"Server", "Workstation", "Hypervisor"}
 APPLIANCE = {"Firewall", "LoadBalancer"}
+DATABASE = {"Database"}
 
 # The canonical applicability matrix. True = the control is expected on this asset type.
 # Used to:
@@ -33,14 +35,15 @@ APPLIANCE = {"Firewall", "LoadBalancer"}
 # Rules from spec:
 #   - PAM excluded on Workstations.
 #   - Only SIEM + PAM apply to Routers/Switches/IPPhones/IPCameras/Printers.
+#   - Database: all endpoint controls apply plus PAM (no Workstation exclusion needed).
 CONTROL_APPLICABILITY: dict[str, set[str]] = {
-    "EDR":   ENDPOINT_LIKE,
-    "AV":    ENDPOINT_LIKE,
-    "PATCH": ENDPOINT_LIKE,
-    "DLP":   ENDPOINT_LIKE,
-    "VA":    ENDPOINT_LIKE,
-    "SIEM":  ENDPOINT_LIKE | NETWORK_GEAR | APPLIANCE,
-    "PAM":   (ENDPOINT_LIKE - {"Workstation"}) | NETWORK_GEAR | APPLIANCE,
+    "EDR":   ENDPOINT_LIKE | DATABASE,
+    "AV":    ENDPOINT_LIKE | DATABASE,
+    "PATCH": ENDPOINT_LIKE | DATABASE,
+    "DLP":   ENDPOINT_LIKE | DATABASE,
+    "VA":    ENDPOINT_LIKE | DATABASE,
+    "SIEM":  ENDPOINT_LIKE | NETWORK_GEAR | APPLIANCE | DATABASE,
+    "PAM":   (ENDPOINT_LIKE - {"Workstation"}) | NETWORK_GEAR | APPLIANCE | DATABASE,
 }
 
 

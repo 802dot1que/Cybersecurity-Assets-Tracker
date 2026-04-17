@@ -27,7 +27,10 @@ def seed():
     db = SessionLocal()
     try:
         for code, name in CONTROL_SEED:
-            if db.scalar(select(ControlType).where(ControlType.code == code)):
+            existing = db.scalar(select(ControlType).where(ControlType.code == code))
+            if existing:
+                # Refresh applicability in case new asset types were added.
+                existing.applies_to_asset_types = sorted(CONTROL_APPLICABILITY.get(code, set()))
                 continue
             db.add(ControlType(
                 code=code, name=name,
