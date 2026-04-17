@@ -57,3 +57,6 @@ def control_applies(control_code: str, asset_type: str) -> bool:
 
 CONTROL_STATUS = ("Installed", "Missing", "Unknown")
 CRITICALITY_LEVELS = ("Low", "Medium", "High", "Critical")
+
+ASSET_STATUS_VALUES = ("Operational", "Decommissioned", "In Store")
+ENVIRONMENT_VALUES = ("Production", "Staging", "UAT", "DEV", "User")

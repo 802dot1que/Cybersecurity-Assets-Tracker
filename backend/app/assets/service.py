@@ -10,6 +10,7 @@ from app.assets.schemas import (
 )
 
 
+
 def _field(asset: Asset, name: str) -> FieldValue:
     system = getattr(asset, f"system_{name}")
     override = getattr(asset, f"override_{name}")
@@ -66,6 +67,9 @@ def to_asset_out(db: Session, asset: Asset) -> AssetOut:
         os=_field(asset, "os"),
         os_version=_field(asset, "os_version"),
         os_eos=_field(asset, "os_eos"),
+        asset_status=_field(asset, "asset_status"),
+        environment=_field(asset, "environment"),
+        location=_field(asset, "location"),
         ips=[AssetIPOut(ip=i.ip, source=i.source, first_seen=i.first_seen, last_seen=i.last_seen)
              for i in asset.ips],
         first_seen=asset.first_seen,
@@ -93,6 +97,9 @@ def to_list_item(db: Session, asset: Asset) -> AssetListItem:
         os=asset.effective("os"),
         os_version=asset.effective("os_version"),
         os_eos=asset.effective("os_eos"),
+        asset_status=asset.effective("asset_status"),
+        environment=asset.effective("environment"),
+        location=asset.effective("location"),
         ips=[i.ip for i in asset.ips],
         last_seen=asset.last_seen,
         criticality_level=asset.criticality.level if asset.criticality else None,

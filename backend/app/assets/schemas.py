@@ -58,6 +58,9 @@ class AssetOut(BaseModel):
     os: FieldValue
     os_version: FieldValue
     os_eos: FieldValue
+    asset_status: FieldValue
+    environment: FieldValue
+    location: FieldValue
     ips: list[AssetIPOut]
     first_seen: datetime | None
     last_seen: datetime | None
@@ -77,11 +80,22 @@ class AssetListItem(BaseModel):
     os: str | None = None
     os_version: str | None = None
     os_eos: date | None = None
+    asset_status: str | None = None
+    environment: str | None = None
+    location: str | None = None
     ips: list[str] = []
     last_seen: datetime | None = None
     criticality_level: str | None = None
     confidence_score: float = 0.0
     conflict_count: int = 0
+
+
+class AssetPage(BaseModel):
+    items: list[AssetListItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class OverridePayload(BaseModel):
@@ -105,4 +119,11 @@ class CreateAssetPayload(BaseModel):
     asset_type: str | None = None
     os: str | None = None
     os_version: str | None = None
+    asset_status: str | None = None
+    environment: str | None = None
+    location: str | None = None
     ips: list[str] = Field(default_factory=list)
+
+
+class BulkDeletePayload(BaseModel):
+    ids: list[int]

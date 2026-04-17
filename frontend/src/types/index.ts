@@ -37,6 +37,9 @@ export type AssetOut = {
   os: FieldValue<string>;
   os_version: FieldValue<string>;
   os_eos: FieldValue<string>;
+  asset_status: FieldValue<string>;
+  environment: FieldValue<string>;
+  location: FieldValue<string>;
   ips: { ip: string; source: string | null; first_seen: string | null; last_seen: string | null }[];
   first_seen: string | null;
   last_seen: string | null;
@@ -51,7 +54,16 @@ export type AssetListItem = {
   id: number; uuid: string;
   hostname: string | null; mac: string | null;
   asset_type: string | null; os: string | null; os_version: string | null; os_eos: string | null;
+  asset_status: string | null; environment: string | null; location: string | null;
   ips: string[]; last_seen: string | null;
   criticality_level: string | null; confidence_score: number;
   conflict_count: number;
+};
+
+export type AssetPage = {
+  items: AssetListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
 };

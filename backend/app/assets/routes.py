@@ -1,13 +1,15 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy import and_, delete as sqla_delete, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.assets.constants import control_applies
 from app.assets.models import Asset, AssetConflict, AssetIP, AssetSecurityControl, ControlType
 from app.assets.schemas import (
-    AssetListItem, AssetOut, ConflictOut, ControlUpdatePayload, CreateAssetPayload,
-    ManualCriticalityPayload, OverridePayload,
+    AssetListItem, AssetOut, AssetPage, BulkDeletePayload, ConflictOut,
+    ControlUpdatePayload, CreateAssetPayload, ManualCriticalityPayload, OverridePayload,
 )
 from app.assets.service import to_asset_out, to_list_item
 from app.auth.models import User
@@ -19,26 +21,32 @@ from app.overrides.service import set_override
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 
+_CRIT_ORDER = {"Critical": 4, "High": 3, "Medium": 2, "Low": 1}
+
 
 class ConflictResolvePayload(BaseModel):
     choice: str  # "a" | "b" | "override"
     override_value: str | None = None
 
 
-@router.get("", response_model=list[AssetListItem])
+@router.get("", response_model=AssetPage)
 def list_assets(
     q: str | None = Query(None, description="Search hostname/IP/MAC"),
     asset_type: str | None = None,
+    asset_status: str | None = None,
+    environment: str | None = None,
     missing_control: str | None = Query(None, description="Control code — assets where applicable but not Installed"),
     installed_control: str | None = Query(None, description="Control code — assets where this control is Installed"),
     has_conflicts: bool = False,
     eos_only: bool = False,
     unknown_only: bool = False,
-    limit: int = 200,
-    offset: int = 0,
+    sort_by: str | None = None,
+    sort_dir: str = "asc",
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
-):
+) -> AssetPage:
     stmt = select(Asset)
     if q:
         like = f"%{q.lower()}%"
@@ -52,6 +60,16 @@ def list_assets(
         stmt = stmt.where(or_(
             Asset.system_asset_type == asset_type,
             Asset.override_asset_type == asset_type,
+        ))
+    if asset_status:
+        stmt = stmt.where(or_(
+            Asset.system_asset_status == asset_status,
+            Asset.override_asset_status == asset_status,
+        ))
+    if environment:
+        stmt = stmt.where(or_(
+            Asset.system_environment == environment,
+            Asset.override_environment == environment,
         ))
     if eos_only:
         from datetime import date
@@ -67,8 +85,9 @@ def list_assets(
                 and_(AssetConflict.asset_id == Asset.id, AssetConflict.resolved == False)  # noqa: E712
             )
         )
-    assets = db.scalars(stmt.limit(limit).offset(offset)).all()
+    assets = list(db.scalars(stmt).all())
 
+    # Python-side control filters
     if missing_control:
         ct = db.scalar(select(ControlType).where(ControlType.code == missing_control))
         whitelist = (ct.applies_to_asset_types or []) if ct else []
@@ -92,7 +111,40 @@ def list_assets(
 
         assets = [a for a in assets if is_installed(a)]
 
-    return [to_list_item(db, a) for a in assets]
+    # Sorting
+    if sort_by:
+        reverse = sort_dir.lower() == "desc"
+        str_fields = ("hostname", "mac", "asset_type", "os", "os_version", "asset_status", "environment", "location")
+        if sort_by in str_fields:
+            assets.sort(key=lambda a: (a.effective(sort_by) or "").lower(), reverse=reverse)
+        elif sort_by == "last_seen":
+            _epoch = datetime(2000, 1, 1, tzinfo=timezone.utc)
+            assets.sort(key=lambda a: a.last_seen or _epoch, reverse=reverse)
+        elif sort_by == "confidence":
+            assets.sort(key=lambda a: a.confidence_score or 0.0, reverse=reverse)
+        elif sort_by == "criticality":
+            assets.sort(
+                key=lambda a: _CRIT_ORDER.get(a.criticality.level if a.criticality else None, 0),
+                reverse=reverse,
+            )
+        elif sort_by == "conflicts":
+            assets.sort(
+                key=lambda a: sum(1 for c in a.conflicts if not c.resolved),
+                reverse=reverse,
+            )
+
+    total = len(assets)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    offset = (page - 1) * page_size
+    page_assets = assets[offset: offset + page_size]
+
+    return AssetPage(
+        items=[to_list_item(db, a) for a in page_assets],
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
 
 
 @router.post("", response_model=AssetOut, status_code=201)
@@ -102,8 +154,6 @@ def create_asset(
     current: User = Depends(get_current_user),
 ):
     import uuid as uuidlib
-    from datetime import datetime, timezone
-    from app.assets.models import AssetIP
     from app.audit.service import record as audit
 
     now = datetime.now(timezone.utc)
@@ -114,6 +164,9 @@ def create_asset(
         system_asset_type=payload.asset_type or None,
         system_os=payload.os or None,
         system_os_version=payload.os_version or None,
+        system_asset_status=payload.asset_status or None,
+        system_environment=payload.environment or None,
+        system_location=payload.location or None,
         first_seen=now,
         last_seen=now,
         confidence_score=1.0,
@@ -133,12 +186,43 @@ def create_asset(
     return to_asset_out(db, asset)
 
 
+@router.post("/bulk-delete", status_code=204)
+def bulk_delete_assets(
+    payload: BulkDeletePayload,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    from app.audit.service import record as audit
+    if not payload.ids:
+        return
+    db.execute(sqla_delete(Asset).where(Asset.id.in_(payload.ids)))
+    audit(db, entity_type="asset", entity_id=0, action="bulk_delete",
+          user_id=current.id, extra={"ids": payload.ids, "count": len(payload.ids)})
+    db.commit()
+
+
 @router.get("/{asset_id}", response_model=AssetOut)
 def get_asset(asset_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     asset = db.get(Asset, asset_id)
     if not asset:
         raise HTTPException(404, "Not found")
     return to_asset_out(db, asset)
+
+
+@router.delete("/{asset_id}", status_code=204)
+def delete_asset(
+    asset_id: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    from app.audit.service import record as audit
+    asset = db.get(Asset, asset_id)
+    if not asset:
+        raise HTTPException(404, "Not found")
+    db.delete(asset)
+    audit(db, entity_type="asset", entity_id=asset_id, action="delete",
+          user_id=current.id, extra={})
+    db.commit()
 
 
 @router.put("/{asset_id}/override/{field}", response_model=AssetOut)

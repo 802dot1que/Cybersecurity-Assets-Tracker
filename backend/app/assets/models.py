@@ -48,6 +48,15 @@ class Asset(Base):
     system_os_eos:       Mapped[date | None] = mapped_column(Date)
     override_os_eos:     Mapped[date | None] = mapped_column(Date)
 
+    system_asset_status:   Mapped[str | None] = mapped_column(String(30))
+    override_asset_status: Mapped[str | None] = mapped_column(String(30))
+
+    system_environment:   Mapped[str | None] = mapped_column(String(30))
+    override_environment: Mapped[str | None] = mapped_column(String(30))
+
+    system_location:   Mapped[str | None] = mapped_column(String(255))
+    override_location: Mapped[str | None] = mapped_column(String(255))
+
     # Timestamps
     first_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_seen:  Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -75,7 +84,10 @@ class Asset(Base):
     )
 
     # ---------- effective value helper ----------
-    OVERRIDABLE_FIELDS = ("hostname", "mac", "asset_type", "os", "os_version", "os_eos")
+    OVERRIDABLE_FIELDS = (
+        "hostname", "mac", "asset_type", "os", "os_version", "os_eos",
+        "asset_status", "environment", "location",
+    )
 
     def effective(self, field: str):
         """Returns override if set, else system."""
