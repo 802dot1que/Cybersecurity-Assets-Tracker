@@ -15,7 +15,9 @@ class FieldValue(BaseModel):
 
 
 class AssetIPOut(BaseModel):
+    id: int
     ip: str
+    is_override: bool = False
     source: str | None = None
     first_seen: datetime | None = None
     last_seen: datetime | None = None
@@ -61,6 +63,12 @@ class AssetOut(BaseModel):
     asset_status: FieldValue
     environment: FieldValue
     location: FieldValue
+    function: FieldValue
+    custodian: FieldValue
+    user_name: FieldValue
+    os_license_state: FieldValue
+    edr_license_state: FieldValue
+    av_license_state: FieldValue
     ips: list[AssetIPOut]
     first_seen: datetime | None
     last_seen: datetime | None
@@ -83,6 +91,9 @@ class AssetListItem(BaseModel):
     asset_status: str | None = None
     environment: str | None = None
     location: str | None = None
+    function: str | None = None
+    custodian: str | None = None
+    user_name: str | None = None
     ips: list[str] = []
     last_seen: datetime | None = None
     criticality_level: str | None = None
@@ -113,6 +124,13 @@ class ManualCriticalityPayload(BaseModel):
     score: int = Field(ge=0, le=100)
 
 
+class AddIPPayload(BaseModel):
+    ip: str
+
+class EditIPPayload(BaseModel):
+    ip: str
+
+
 class CreateAssetPayload(BaseModel):
     hostname: str | None = None
     mac: str | None = None
@@ -122,6 +140,9 @@ class CreateAssetPayload(BaseModel):
     asset_status: str | None = None
     environment: str | None = None
     location: str | None = None
+    function: str | None = None
+    custodian: str | None = None
+    user_name: str | None = None
     ips: list[str] = Field(default_factory=list)
 
 

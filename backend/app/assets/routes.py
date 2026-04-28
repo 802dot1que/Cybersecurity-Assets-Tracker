@@ -8,15 +8,19 @@ from sqlalchemy.orm import Session
 from app.assets.constants import control_applies
 from app.assets.models import Asset, AssetConflict, AssetIP, AssetSecurityControl, ControlType
 from app.assets.schemas import (
-    AssetListItem, AssetOut, AssetPage, BulkDeletePayload, ConflictOut,
-    ControlUpdatePayload, CreateAssetPayload, ManualCriticalityPayload, OverridePayload,
+    AddIPPayload, AssetListItem, AssetOut, AssetPage, BulkDeletePayload, ConflictOut,
+    ControlUpdatePayload, CreateAssetPayload, EditIPPayload, ManualCriticalityPayload, OverridePayload,
 )
 from app.assets.service import to_asset_out, to_list_item
 from app.auth.models import User
 from app.controls.service import upsert_control
 from app.core.db import get_db
 from app.core.deps import get_current_user
-from app.criticality.service import recompute as recompute_crit, set_manual as set_manual_crit
+from app.criticality.service import (
+    recompute as recompute_crit,
+    score_from_questionnaire as score_questionnaire_crit,
+    set_manual as set_manual_crit,
+)
 from app.overrides.service import set_override
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
@@ -167,6 +171,9 @@ def create_asset(
         system_asset_status=payload.asset_status or None,
         system_environment=payload.environment or None,
         system_location=payload.location or None,
+        system_function=payload.function or None,
+        system_custodian=payload.custodian or None,
+        system_user_name=payload.user_name or None,
         first_seen=now,
         last_seen=now,
         confidence_score=1.0,
@@ -223,6 +230,83 @@ def delete_asset(
     audit(db, entity_type="asset", entity_id=asset_id, action="delete",
           user_id=current.id, extra={})
     db.commit()
+
+
+@router.post("/{asset_id}/ips", response_model=AssetOut, status_code=201)
+def add_ip(
+    asset_id: int, payload: AddIPPayload,
+    db: Session = Depends(get_db), current: User = Depends(get_current_user),
+):
+    from app.audit.service import record as audit
+    from app.ingestion.normalize import norm_ipv4
+    asset = db.get(Asset, asset_id)
+    if not asset:
+        raise HTTPException(404, "Not found")
+    ip = norm_ipv4(payload.ip.strip())
+    if not ip:
+        raise HTTPException(422, "Invalid IPv4 address")
+    existing = next((x for x in asset.ips if x.ip == ip), None)
+    if existing:
+        raise HTTPException(409, "IP already exists on this asset")
+    now = datetime.now(timezone.utc)
+    asset.ips.append(AssetIP(ip=ip, source="manual", is_override=True, first_seen=now, last_seen=now))
+    audit(db, entity_type="asset", entity_id=asset_id, action="ip_add",
+          field="ips", new_value=ip, user_id=current.id)
+    db.commit()
+    db.refresh(asset)
+    return to_asset_out(db, asset)
+
+
+@router.put("/{asset_id}/ips/{ip_id}", response_model=AssetOut)
+def edit_ip(
+    asset_id: int, ip_id: int, payload: EditIPPayload,
+    db: Session = Depends(get_db), current: User = Depends(get_current_user),
+):
+    from app.audit.service import record as audit
+    from app.ingestion.normalize import norm_ipv4
+    asset = db.get(Asset, asset_id)
+    if not asset:
+        raise HTTPException(404, "Not found")
+    ip_row = db.get(AssetIP, ip_id)
+    if not ip_row or ip_row.asset_id != asset_id:
+        raise HTTPException(404, "IP not found")
+    new_ip = norm_ipv4(payload.ip.strip())
+    if not new_ip:
+        raise HTTPException(422, "Invalid IPv4 address")
+    conflict = next((x for x in asset.ips if x.ip == new_ip and x.id != ip_id), None)
+    if conflict:
+        raise HTTPException(409, "IP already exists on this asset")
+    old_ip = ip_row.ip
+    ip_row.ip = new_ip
+    ip_row.is_override = True
+    ip_row.source = "manual"
+    ip_row.last_seen = datetime.now(timezone.utc)
+    audit(db, entity_type="asset", entity_id=asset_id, action="ip_edit",
+          field="ips", old_value=old_ip, new_value=new_ip, user_id=current.id)
+    db.commit()
+    db.refresh(asset)
+    return to_asset_out(db, asset)
+
+
+@router.delete("/{asset_id}/ips/{ip_id}", response_model=AssetOut)
+def delete_ip(
+    asset_id: int, ip_id: int,
+    db: Session = Depends(get_db), current: User = Depends(get_current_user),
+):
+    from app.audit.service import record as audit
+    asset = db.get(Asset, asset_id)
+    if not asset:
+        raise HTTPException(404, "Not found")
+    ip_row = db.get(AssetIP, ip_id)
+    if not ip_row or ip_row.asset_id != asset_id:
+        raise HTTPException(404, "IP not found")
+    old_ip = ip_row.ip
+    db.delete(ip_row)
+    audit(db, entity_type="asset", entity_id=asset_id, action="ip_delete",
+          field="ips", old_value=old_ip, user_id=current.id)
+    db.commit()
+    db.refresh(asset)
+    return to_asset_out(db, asset)
 
 
 @router.put("/{asset_id}/override/{field}", response_model=AssetOut)
@@ -297,6 +381,23 @@ def recompute_criticality(
     if not asset:
         raise HTTPException(404, "Not found")
     recompute_crit(db, asset)
+    db.commit()
+    db.refresh(asset)
+    return to_asset_out(db, asset)
+
+
+@router.post("/{asset_id}/criticality/questionnaire", response_model=AssetOut)
+def score_from_questionnaire(
+    asset_id: int,
+    answers: dict,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    """Score criticality from CIA-triad questionnaire answers."""
+    asset = db.get(Asset, asset_id)
+    if not asset:
+        raise HTTPException(404, "Not found")
+    score_questionnaire_crit(db, asset, answers=answers, user_id=current.id)
     db.commit()
     db.refresh(asset)
     return to_asset_out(db, asset)

@@ -10,6 +10,7 @@ from app.assets import models as _assets  # noqa: F401
 from app.auth import models as _auth  # noqa: F401
 from app.audit import models as _audit  # noqa: F401
 from app.ingestion import models as _ingestion  # noqa: F401
+from app.nessus import models as _nessus  # noqa: F401
 
 
 config = context.config

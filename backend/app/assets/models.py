@@ -57,6 +57,27 @@ class Asset(Base):
     system_location:   Mapped[str | None] = mapped_column(String(255))
     override_location: Mapped[str | None] = mapped_column(String(255))
 
+    # Function + Custodian (general assets — not shown for IPPhone / Workstation)
+    system_function:    Mapped[str | None] = mapped_column(String(255))
+    override_function:  Mapped[str | None] = mapped_column(String(255))
+
+    system_custodian:    Mapped[str | None] = mapped_column(String(255))
+    override_custodian:  Mapped[str | None] = mapped_column(String(255))
+
+    # User (IPPhone / Workstation only)
+    system_user_name:    Mapped[str | None] = mapped_column(String(255))
+    override_user_name:  Mapped[str | None] = mapped_column(String(255))
+
+    # License state (Licensed | Unlicensed) for OS, EDR, AV
+    system_os_license_state:    Mapped[str | None] = mapped_column(String(20))
+    override_os_license_state:  Mapped[str | None] = mapped_column(String(20))
+
+    system_edr_license_state:    Mapped[str | None] = mapped_column(String(20))
+    override_edr_license_state:  Mapped[str | None] = mapped_column(String(20))
+
+    system_av_license_state:    Mapped[str | None] = mapped_column(String(20))
+    override_av_license_state:  Mapped[str | None] = mapped_column(String(20))
+
     # Timestamps
     first_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_seen:  Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -87,6 +108,8 @@ class Asset(Base):
     OVERRIDABLE_FIELDS = (
         "hostname", "mac", "asset_type", "os", "os_version", "os_eos",
         "asset_status", "environment", "location",
+        "function", "custodian", "user_name",
+        "os_license_state", "edr_license_state", "av_license_state",
     )
 
     def effective(self, field: str):

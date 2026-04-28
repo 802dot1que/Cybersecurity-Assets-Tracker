@@ -40,6 +40,7 @@ async def upload(
     mapping: str = Form(..., description="JSON object: {canonical_field: excel_column}"),
     control_mapping: str = Form("{}", description="JSON object: {control_code: excel_column}"),
     source: str = Form("excel"),
+    skip_asset_ids: str = Form("[]", description="JSON array of asset IDs to skip on match"),
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
 ):
@@ -48,19 +49,22 @@ async def upload(
     try:
         mapping_dict = json.loads(mapping)
         control_dict = json.loads(control_mapping)
+        skip_ids: set[int] = set(json.loads(skip_asset_ids))
     except json.JSONDecodeError as e:
-        raise HTTPException(400, f"Invalid mapping JSON: {e}") from e
+        raise HTTPException(400, f"Invalid JSON parameter: {e}") from e
     batch = run_excel_ingestion(
         db, filename=file.filename or "upload.xlsx",
         content=content, mapping=mapping_dict,
         control_mapping=control_dict,
         source=source, uploaded_by=current.id,
+        skip_asset_ids=skip_ids,
     )
     return {
         "batch_id": batch.id,
         "row_count": batch.row_count,
         "created": batch.created_count,
         "merged": batch.merged_count,
+        "skipped": batch.skipped_count,
         "errors": batch.error_count,
     }
 
@@ -72,7 +76,7 @@ def list_batches(db: Session = Depends(get_db), _: User = Depends(get_current_us
         {
             "id": b.id, "filename": b.filename, "source": b.source, "status": b.status,
             "rows": b.row_count, "created": b.created_count, "merged": b.merged_count,
-            "errors": b.error_count, "created_at": b.created_at,
+            "skipped": b.skipped_count, "errors": b.error_count, "created_at": b.created_at,
         }
         for b in rows
     ]

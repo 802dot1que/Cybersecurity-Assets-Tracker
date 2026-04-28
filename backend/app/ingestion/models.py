@@ -16,6 +16,7 @@ class IngestionBatch(Base):
     row_count: Mapped[int] = mapped_column(Integer, default=0)
     created_count: Mapped[int] = mapped_column(Integer, default=0)
     merged_count: Mapped[int] = mapped_column(Integer, default=0)
+    skipped_count: Mapped[int] = mapped_column(Integer, default=0)
     error_count: Mapped[int] = mapped_column(Integer, default=0)
     mapping: Mapped[dict] = mapped_column(JSONB, default=dict)
     error_log: Mapped[str | None] = mapped_column(Text)

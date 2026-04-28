@@ -37,6 +37,10 @@ services:
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       CORS_ORIGINS: '["http://localhost:5173","http://localhost"]'
+      NESSUS_URL: ${NESSUS_URL:-https://nessus:8834}
+      NESSUS_ACCESS_KEY: ${NESSUS_ACCESS_KEY:-}
+      NESSUS_SECRET_KEY: ${NESSUS_SECRET_KEY:-}
+      NESSUS_VERIFY_SSL: ${NESSUS_VERIFY_SSL:-false}
     ports:
       - "8000:8000"
     command: >
@@ -60,6 +64,18 @@ services:
     volumes:
       - ./backend:/app
 
+  nessus:
+    image: tenableofficial/nessus
+    restart: unless-stopped
+    environment:
+      ACTIVATION_CODE: ${NESSUS_ACTIVATION_CODE:-}
+      USERNAME: ${NESSUS_ADMIN_USER:-admin}
+      PASSWORD: ${NESSUS_ADMIN_PASS:-admin1234!}
+    ports:
+      - "8834:8834"
+    volumes:
+      - nessusdata:/opt/nessus/var/nessus
+
   web:
     build:
       context: .
@@ -75,3 +91,4 @@ services:
 
 volumes:
   pgdata:
+  nessusdata:

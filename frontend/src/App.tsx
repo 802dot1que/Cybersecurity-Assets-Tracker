@@ -4,6 +4,7 @@ import Assets from "./pages/Assets";
 import AssetDetail from "./pages/AssetDetail";
 import Upload from "./pages/Upload";
 import Audit from "./pages/Audit";
+import Nessus from "./pages/Nessus";
 import Login from "./pages/Login";
 import { useAuth } from "./hooks/useAuth";
 
@@ -21,6 +22,7 @@ function Layout({ children }: { children: React.ReactNode }) {
           <NavLink to="/assets" className={active}>Assets</NavLink>
           <NavLink to="/upload" className={active}>Upload</NavLink>
           <NavLink to="/audit" className={active}>Audit</NavLink>
+          <NavLink to="/nessus" className={active}>Nessus</NavLink>
         </nav>
         <div className="ml-auto text-sm text-slate-600">
           {user?.email} · <button className="underline" onClick={logout}>Logout</button>
@@ -47,6 +49,7 @@ export default function App() {
       <Route path="/assets/:id" element={<Protected><AssetDetail /></Protected>} />
       <Route path="/upload" element={<Protected><Upload /></Protected>} />
       <Route path="/audit" element={<Protected><Audit /></Protected>} />
+      <Route path="/nessus" element={<Protected><Nessus /></Protected>} />
     </Routes>
   );
 }

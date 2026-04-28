@@ -16,7 +16,10 @@ from app.ingestion.normalize import CANONICAL_FIELDS
 from app.ingestion.parser import cell_to_control_status, normalize_row, read_excel
 
 # Fields copied from normalized row to asset.system_* on create/merge.
-OVERRIDABLE_NORMALIZED = ("hostname", "mac", "asset_type", "os", "os_version", "os_eos")
+OVERRIDABLE_NORMALIZED = (
+    "hostname", "mac", "asset_type", "os", "os_version", "os_eos",
+    "asset_status", "environment", "location",
+)
 
 
 def run_excel_ingestion(
@@ -28,6 +31,7 @@ def run_excel_ingestion(
     source: str = "excel",
     control_mapping: dict[str, str] | None = None,
     uploaded_by: int | None = None,
+    skip_asset_ids: set[int] | None = None,
 ) -> IngestionBatch:
     df = read_excel(content)
     full_mapping = {"fields": mapping, "controls": control_mapping or {}}
@@ -38,6 +42,8 @@ def run_excel_ingestion(
     db.add(batch)
     db.flush()
 
+    _skip = skip_asset_ids or set()
+
     for idx, raw in enumerate(df.to_dict(orient="records")):
         raw = {k: (None if pd.isna(v) else v) for k, v in raw.items()}
         rec = IngestionRecord(batch_id=batch.id, row_index=idx, raw=raw)
@@ -46,16 +52,21 @@ def run_excel_ingestion(
             normalized = normalize_row(raw, mapping)
             rec.normalized = _jsonable(normalized)
             asset, action, confidence = _merge_or_create(
-                db, normalized, source=source, user_id=uploaded_by
+                db, normalized, source=source, user_id=uploaded_by,
+                skip_asset_ids=_skip,
+                filename=filename, batch_id=batch.id,
             )
-            rec.asset_id = asset.id
+            rec.asset_id = asset.id if asset else None
             rec.action = action
             rec.match_confidence = confidence
-            _apply_control_columns(db, asset, raw, control_mapping or {}, source=source)
             if action == "created":
                 batch.created_count += 1
             elif action == "merged":
                 batch.merged_count += 1
+            elif action == "skipped":
+                batch.skipped_count += 1
+            if action in ("created", "merged") and asset is not None:
+                _apply_control_columns(db, asset, raw, control_mapping or {}, source=source)
         except Exception as e:  # noqa: BLE001
             rec.action = "error"
             rec.error = str(e)
@@ -98,8 +109,10 @@ def _jsonable(d: dict) -> dict:
 
 
 def _merge_or_create(
-    db: Session, normalized: dict[str, Any], *, source: str, user_id: int | None
-) -> tuple[Asset, str, float]:
+    db: Session, normalized: dict[str, Any], *, source: str, user_id: int | None,
+    skip_asset_ids: set[int] | None = None,
+    filename: str | None = None, batch_id: int | None = None,
+) -> tuple[Asset | None, str, float]:
     match = correlate(db, normalized)
     now = datetime.now(timezone.utc)
 
@@ -115,15 +128,26 @@ def _merge_or_create(
         db.flush()
         _apply_system_fields(db, asset, normalized, source=source, is_new=True)
         audit(db, entity_type="asset", entity_id=asset.id, action="ingest",
-              user_id=user_id, extra={"source": source, "created": True})
+              user_id=user_id, extra={
+                  "source": source, "created": True,
+                  "filename": filename, "batch_id": batch_id,
+              })
         return asset, "created", 1.0
 
     asset, confidence = match
+
+    # User explicitly chose to skip merging into this existing asset.
+    if skip_asset_ids and asset.id in skip_asset_ids:
+        return None, "skipped", confidence
+
     _apply_system_fields(db, asset, normalized, source=source, is_new=False)
     asset.last_seen = now
     asset.confidence_score = max(asset.confidence_score or 0.0, confidence)
     audit(db, entity_type="asset", entity_id=asset.id, action="ingest",
-          user_id=user_id, extra={"source": source, "merged": True, "confidence": confidence})
+          user_id=user_id, extra={
+              "source": source, "merged": True, "confidence": confidence,
+              "filename": filename, "batch_id": batch_id,
+          })
     return asset, "merged", confidence
 
 

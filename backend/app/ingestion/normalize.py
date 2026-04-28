@@ -99,15 +99,68 @@ def norm_date(v) -> date | None:
     return None
 
 
+_ASSET_STATUS_ALIASES = {
+    "operational": "Operational",
+    "active":      "Operational",
+    "online":      "Operational",
+    "decommissioned": "Decommissioned",
+    "retired":     "Decommissioned",
+    "offline":     "Decommissioned",
+    "instore":     "In Store",
+    "in store":    "In Store",
+    "spare":       "In Store",
+    "stored":      "In Store",
+}
+
+_ENV_ALIASES = {
+    "production":  "Production",
+    "prod":        "Production",
+    "prd":         "Production",
+    "staging":     "Staging",
+    "stage":       "Staging",
+    "stg":         "Staging",
+    "uat":         "UAT",
+    "useracceptance": "UAT",
+    "dev":         "DEV",
+    "development": "DEV",
+    "user":        "User",
+    "end user":    "User",
+}
+
+
+def norm_asset_status(v) -> str | None:
+    if v in (None, "", "nan"):
+        return None
+    s = str(v).strip().lower().replace("-", "").replace("_", "").replace(" ", " ")
+    return _ASSET_STATUS_ALIASES.get(s.replace(" ", "").replace("-", "").replace("_", "")) \
+        or _ASSET_STATUS_ALIASES.get(s) or None
+
+
+def norm_environment(v) -> str | None:
+    if v in (None, "", "nan"):
+        return None
+    s = str(v).strip().lower().replace("-", "").replace("_", "").replace(" ", "")
+    return _ENV_ALIASES.get(s) or None
+
+
+def norm_location(v) -> str | None:
+    if v in (None, "", "nan"):
+        return None
+    return str(v).strip() or None
+
+
 FIELD_NORMALIZERS = {
-    "hostname": norm_hostname,
-    "mac": norm_mac,
-    "asset_type": norm_asset_type,
-    "os": lambda v: str(v).strip() if v not in (None, "", "nan") else None,
-    "os_version": lambda v: str(v).strip() if v not in (None, "", "nan") else None,
-    "os_eos": norm_date,
-    "first_seen": norm_date,
-    "last_seen": norm_date,
+    "hostname":     norm_hostname,
+    "mac":          norm_mac,
+    "asset_type":   norm_asset_type,
+    "os":           lambda v: str(v).strip() if v not in (None, "", "nan") else None,
+    "os_version":   lambda v: str(v).strip() if v not in (None, "", "nan") else None,
+    "os_eos":       norm_date,
+    "first_seen":   norm_date,
+    "last_seen":    norm_date,
+    "asset_status": norm_asset_status,
+    "environment":  norm_environment,
+    "location":     norm_location,
 }
 
 # Canonical destination fields we care to ingest.
@@ -115,4 +168,5 @@ CANONICAL_FIELDS = [
     "hostname", "mac", "ips",
     "asset_type", "os", "os_version", "os_eos",
     "first_seen", "last_seen",
+    "asset_status", "environment", "location",
 ]

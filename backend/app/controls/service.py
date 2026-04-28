@@ -39,8 +39,8 @@ def upsert_control(
         None,
     )
     if link is None:
-        link = AssetSecurityControl(control_type_id=ct.id)
-        link.asset = asset
+        link = AssetSecurityControl(asset_id=asset.id, control_type_id=ct.id)
+        db.add(link)
     if system_status is not None:
         link.system_status = system_status
     if override_status is not None:

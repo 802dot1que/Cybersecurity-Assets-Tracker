@@ -70,8 +70,19 @@ def to_asset_out(db: Session, asset: Asset) -> AssetOut:
         asset_status=_field(asset, "asset_status"),
         environment=_field(asset, "environment"),
         location=_field(asset, "location"),
-        ips=[AssetIPOut(ip=i.ip, source=i.source, first_seen=i.first_seen, last_seen=i.last_seen)
-             for i in asset.ips],
+        function=_field(asset, "function"),
+        custodian=_field(asset, "custodian"),
+        user_name=_field(asset, "user_name"),
+        os_license_state=_field(asset, "os_license_state"),
+        edr_license_state=_field(asset, "edr_license_state"),
+        av_license_state=_field(asset, "av_license_state"),
+        ips=[
+            AssetIPOut(
+                id=i.id, ip=i.ip, is_override=i.is_override,
+                source=i.source, first_seen=i.first_seen, last_seen=i.last_seen,
+            )
+            for i in asset.ips
+        ],
         first_seen=asset.first_seen,
         last_seen=asset.last_seen,
         confidence_score=asset.confidence_score or 0.0,
@@ -100,6 +111,9 @@ def to_list_item(db: Session, asset: Asset) -> AssetListItem:
         asset_status=asset.effective("asset_status"),
         environment=asset.effective("environment"),
         location=asset.effective("location"),
+        function=asset.effective("function"),
+        custodian=asset.effective("custodian"),
+        user_name=asset.effective("user_name"),
         ips=[i.ip for i in asset.ips],
         last_seen=asset.last_seen,
         criticality_level=asset.criticality.level if asset.criticality else None,

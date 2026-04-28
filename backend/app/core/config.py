@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     # Fuzzy matching
     HOSTNAME_FUZZY_THRESHOLD: int = 90
 
+    # Nessus integration
+    NESSUS_URL: str = "https://nessus:8834"
+    NESSUS_ACCESS_KEY: str = ""
+    NESSUS_SECRET_KEY: str = ""
+    NESSUS_VERIFY_SSL: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:

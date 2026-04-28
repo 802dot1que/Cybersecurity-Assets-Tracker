@@ -23,13 +23,25 @@ CONTROL_COLUMN_ALIASES: dict[str, list[str]] = {
 
 
 def _yes(v: Any) -> bool | None:
-    """Map a cell to True/False/None for Yes/No/unknown."""
+    """Map a cell to True/False/None for Yes/No/unknown.
+
+    Handles strings ("Yes"/"YES"/etc.), integers (1/0), and floats (1.0/0.0).
+    """
     if v in (None, "",):
         return None
+    # Numeric check before string conversion to catch int 1 and float 1.0
+    try:
+        n = float(v)
+        if n == 1.0:
+            return True
+        if n == 0.0:
+            return False
+    except (ValueError, TypeError):
+        pass
     s = str(v).strip().lower()
-    if s in ("yes", "y", "true", "1", "installed", "present", "active", "enabled", "ok"):
+    if s in ("yes", "y", "true", "1", "1.0", "installed", "present", "active", "enabled", "ok"):
         return True
-    if s in ("no", "n", "false", "0", "missing", "absent", "not installed", "none"):
+    if s in ("no", "n", "false", "0", "0.0", "missing", "absent", "not installed", "none"):
         return False
     return None
 
@@ -52,8 +64,11 @@ FIELD_ALIASES: dict[str, list[str]] = {
     "os":         ["os", "operating system", "platform"],
     "os_version": ["os version", "version", "build"],
     "os_eos":     ["eos", "end of support", "os eos", "eol", "end of life"],
-    "first_seen": ["first seen", "created", "discovered"],
-    "last_seen":  ["last seen", "last check-in", "last active"],
+    "first_seen":    ["first seen", "created", "discovered"],
+    "last_seen":     ["last seen", "last check-in", "last active"],
+    "asset_status":  ["status", "asset status", "device status", "operational status", "state"],
+    "environment":   ["environment", "env", "tier", "deployment tier"],
+    "location":      ["location", "site", "building", "office", "branch", "datacenter"],
 }
 
 
